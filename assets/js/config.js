@@ -12,8 +12,8 @@ window.SG_CONFIG = {
   /* ── App / access ────────────────────────────────────────── */
   scannerUrl: "https://surgeguru.base44.app/Scanner",
   // Access model: user signs in with Google at the scanner, then an admin approves.
-  contactEmail: "FILL ME — your@email.com",
-  whatsapp: "",             // optional intl digits, e.g. "9725XXXXXXXX"
+  contactEmail: "fraps32@gmail.com",   // ← "Send by email" button target. Change if you want a different inbox.
+  whatsapp: "",             // 👉 FILL ME — your WhatsApp number, intl digits e.g. "9725XXXXXXXX" (powers the "Send on WhatsApp" button)
   telegram: "",             // optional, e.g. "https://t.me/handle"
 
   /* ── Payment methods (same stack as LIQUIDEX) ────────────── */

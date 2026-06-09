@@ -42,13 +42,28 @@
   const withVat = (usd) => usd * (1 + (C().vatRate || 0));
   function qr(data) { const enc = encodeURIComponent(data); return `<img class="qr" alt="QR" loading="lazy" src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&margin=0&data=${enc}" onerror="this.style.display='none'">`; }
 
+  function waLink(msg) { const wa = (C().whatsapp || "").replace(/[^0-9]/g, ""); return wa ? `https://wa.me/${wa}?text=${encodeURIComponent(msg)}` : ""; }
+  function mailLink(subj, msg) { const e = C().contactEmail || ""; return (e && !/FILL ME/i.test(e)) ? `mailto:${e}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(msg)}` : ""; }
+  function usernameSend(msgHe, msgEn, subjHe, subjEn) {
+    const he = window.LIQ_I18N?.current === "he";
+    const msg = he ? msgHe : msgEn, subj = he ? subjHe : subjEn;
+    const ml = mailLink(subj, msg), wl = waLink(msg);
+    let h = `<div class="send-actions">`;
+    if (ml) h += `<a class="btn btn-primary" href="${ml}">✉&nbsp; ${t("שליחה במייל", "Send by email")}</a>`;
+    if (wl) h += `<a class="btn btn-wa" href="${wl}" target="_blank" rel="noopener">${t("שליחה ב-WhatsApp", "Send on WhatsApp")}</a>`;
+    h += `<button class="btn btn-outline btn-sm" data-copy="${msg.replace(/"/g, "&quot;")}">${t("העתקה", "Copy")}</button></div>`;
+    if (!ml && !wl) h += `<p style="font-size:12.5px;color:var(--muted-2);margin-top:8px">${t("הגדירו אימייל / וואטסאפ ב-config.js", "Set email / WhatsApp in config.js")}</p>`;
+    return h;
+  }
   function accessBlock() {
     const c = C();
+    const mHe = "שלום, שילמתי על Surge Guru. ה-Gmail שאיתו התחברתי לסורק: ______";
+    const mEn = "Hi, I paid for Surge Guru. The Gmail I signed into the scanner with is: ______";
     return `<p style="color:var(--muted);font-size:14px;margin-top:16px">
-      ${t("לאחר התשלום: פתחו את הסורק והתחברו עם Google. שלחו לנו את כתובת ה-Gmail שאיתה התחברתם, ונאשר את הגישה תוך 24 שעות:",
-           "After payment: open the scanner and Sign in with Google. Send us the Gmail you signed in with, and we approve your access within 24h:")}
-      <br><b class="g">${c.contactEmail}</b>
-      <br><a class="g" href="${c.scannerUrl}" target="_blank" rel="noopener" style="font-weight:700">${t("פתחו את הסורק ↗", "Open the scanner ↗")}</a></p>`;
+      ${t("לאחר התשלום: פתחו את הסורק והתחברו עם Google, ואז שלחו לנו את ה-Gmail באחת משתי הדרכים — נאשר את הגישה תוך 24 שעות:",
+           "After payment: open the scanner, sign in with Google, then send us that Gmail one of two ways — we approve within 24h:")}
+      <br><a class="g" href="${c.scannerUrl}" target="_blank" rel="noopener" style="font-weight:700">${t("פתחו את הסורק ↗", "Open the scanner ↗")}</a></p>
+      ${usernameSend(mHe, mEn, "Surge Guru access", "Surge Guru access")}`;
   }
   function priceLine(vat, base) {
     if (!vat) return `<div class="detail-row"><span>${t("לתשלום", "Due today")}</span><span>${money(base)} / ${per()}</span></div>`;
