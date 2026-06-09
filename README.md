@@ -1,34 +1,68 @@
-# Surge Guru — marketing site
+# פפטידים ישראל — Peptides Israel
 
-Bilingual (Hebrew default / English) landing + checkout for **Surge Guru**, a real-time
-crypto explosion scanner (a base44 web app). **$34/week.**
+Bilingual (Hebrew default / English) **sales-focused** peptide storefront.
+Brand: **פפטידים ישראל / Peptides Israel** (a sub-brand of Amino Chains Solutions).
+Israel based, worldwide shipping.
 
-Live: **https://wattsonworks.github.io/SG/** · App: https://surgeguru.base44.app/Scanner
+> RESEARCH USE ONLY. Products are for laboratory research only and are **not for
+> human or animal consumption**. No dosing or administration guidance is provided.
+> Educational/reference content is not medical advice.
 
-## The product (grounded in the actual app)
-- **Live scanner** — 480+ coins, SPOT & PERP, merged across OKX · Kraken · Coinbase · CMC, refresh ~1s.
-- **🔥1+3 explosiveness** — core score = 1-minute + 3-minute move; sort by interval-to-interval change
-  (1m→now, 15m→1m, 30m→15m, 45m→30m, 1h→45m). Persistence shown across 15m/30m/45m/1h.
-- **AI technical analysis** · **chart-pattern detection** (Ascending Triangle, Bullish Flag, Double
-  Bottom, Inverse H&S…) · **full-library correlation** · **surge alerts** · **OKX positions/PnL/margin**.
-- **Access**: sign in with Google at the scanner, then admin approval.
+This is a sub-brand of the Isra.Peptides reference site, recolored to the
+steel/silver-blue brand identity and reoriented from *information* to *selling*:
+real per-product pricing, an add-to-cart → cart-subtotal → order flow, a
+free-shipping promo, and a shop-first navigation.
+
+## Stack
+
+- Single-file vanilla site: all HTML, CSS and JS live in `index.html`.
+- No framework, no build step, no dependencies.
+- Hash-router single-page app (`#products`, `#product/<id>`, `#bundles`, `#pricing`…).
+- Progressive Web App (`manifest.json` + `sw.js`, offline caching).
+- Fully bilingual HE (RTL) / EN (LTR) — every string carries `data-he`/`data-en`.
+  Partial RU/AR dictionaries inherited from the parent site.
+
+## What's different from the parent (sales focus)
+
+- **Pricing engine** (`priceFor`, `PRICE_BASE`, `PRICE_OVR`) — per-product NIS
+  prices shown on every card, the product page, the hero spotlight and the cart.
+- **Cart → order** — line totals, subtotal, free-shipping threshold (₪600) and a
+  grand total; checkout sends a complete order via WhatsApp or email.
+- **Shop-first** — promo bar, sales hero CTAs ("Shop now"), trimmed top nav
+  (Shop / Bundles / Pricing first); deeper research tools live in the footer.
+- **Brand** — steel/silver-blue palette (replacing gold), new logo/hero imagery,
+  Hebrew wordmark "פפטידים ישראל" with the tagline "מחקר · איכות · אמינות".
 
 ## Structure
+
 ```
-index.html        Landing (the persistence thesis + 7 feature pillars + pricing)
-checkout.html     Payment page (renders from config.js)
-404.html
-assets/css/sg.css Design system (fire/surge theme, RTL/LTR) — recolored from the LIQUIDEX system
-assets/js/i18n.js Bilingual engine (data-he / data-en, default Hebrew)
-assets/js/config.js  👉 ALL payment + access settings ("FILL ME")
-assets/js/app.js     Reveals, copy, live tick, config-driven checkout
-assets/img/          Drop a real scanner screenshot here (e.g. scanner.webp) to feature it
+index.html        The whole site (inline CSS + JS, relative img/ paths)
+img/              Brand imagery + per-product visuals
+manifest.json     PWA manifest
+sw.js             Service worker (cache-first) — bump cache name C on asset changes
+CLAUDE.md         Conventions for editing with Claude Code
+netlify.toml      Netlify config (publish root)
+.github/workflows/pages.yml   GitHub Pages deploy
+posts/            Markdown research articles
+models/vial.glb   AR model
 ```
 
-## To finish setup (you)
-Edit **`assets/js/config.js`** — replace every `FILL ME` (contact email/Gmail target, crypto wallets,
-Bit number, bank details). IsraCart drops in once they send the link (`payments.isracart.checkoutUrl`
-+ `status:"live"`). VAT is 0.18 where `vat:true`.
+## Local preview
+
+Serve over HTTP (not file://) so relative paths and the service worker work:
+
+```bash
+python3 -m http.server 8080   # then open http://localhost:8080
+```
 
 ## Deploy
-GitHub Pages from `main` root (`.nojekyll` present). Repo: `wattsonworks/SG`.
+
+GitHub Pages: push, then Settings → Pages → source "GitHub Actions" (workflow
+deploys the root on every push). Netlify/Vercel: no build command, output = root.
+
+## To confirm with the owner
+
+- WhatsApp `972506787586` (inherited) and email `info@peptides-israel.com` are
+  placeholders — update in `index.html` (search `WA=` and `peptides-israel.com`).
+- Prices in `PRICE_BASE` / `PRICE_OVR` are illustrative defaults — set real ones.
+- Social handles (`peptides.israel`) in the head JSON-LD are placeholders.
