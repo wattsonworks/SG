@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://wattsonworks.github.io/SG/sitemap.xml
