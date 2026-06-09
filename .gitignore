@@ -14,3 +14,7 @@ desktop.ini
 # Build artifacts
 /_build/
 node_modules/
+
+# Source screenshots (optimized copies live in assets/img/)
+/WhatsApp Image*
+

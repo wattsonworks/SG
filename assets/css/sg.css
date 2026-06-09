@@ -267,6 +267,17 @@ h2.title{font-size:clamp(28px,4.4vw,46px);margin-bottom:14px}
 .sgx-cap{padding:9px 12px;font-size:11px;color:var(--muted);background:#0a0d12;border-top:1px solid var(--line);text-align:center}
 .sgx-cap b{color:var(--green)}
 
+/* caught-live proof cards */
+.catch-grid{display:flex;flex-wrap:wrap;gap:22px;justify-content:center}
+.catch-card{background:var(--bg-2);border:1px solid var(--line);border-radius:16px;overflow:hidden;max-width:340px;width:100%;transition:transform .2s,border-color .2s,box-shadow .2s}
+.catch-card:hover{border-color:rgba(255,122,26,.45);transform:translateY(-4px);box-shadow:var(--shadow)}
+.catch-card img{width:100%;height:auto;display:block;border-bottom:1px solid var(--line)}
+.catch-card figcaption{padding:14px 16px}
+.catch-card .catch-head{display:flex;justify-content:space-between;align-items:center;font-size:15px;margin-bottom:4px}
+.catch-card .catch-head b{color:var(--ink)}
+.catch-card .up{color:#26a69a;font-weight:700;font-family:var(--mono)}
+.catch-card figcaption p{margin:0;font-size:13.5px;color:var(--muted)}
+
 /* free trial */
 .trial-card{background:linear-gradient(135deg,rgba(0,255,65,.08),rgba(0,229,255,.04));border:1px solid rgba(0,255,65,.32);border-radius:18px;padding:28px 30px;max-width:560px;margin:0 auto}
 .trial-card .tag{display:inline-block;font-family:var(--mono);font-size:11px;letter-spacing:.12em;background:var(--green);color:#04210d;font-weight:700;padding:4px 11px;border-radius:6px}
