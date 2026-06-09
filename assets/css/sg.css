@@ -277,6 +277,10 @@ h2.title{font-size:clamp(28px,4.4vw,46px);margin-bottom:14px}
 .catch-card .catch-head b{color:var(--ink)}
 .catch-card .up{color:#26a69a;font-weight:700;font-family:var(--mono)}
 .catch-card figcaption p{margin:0;font-size:13.5px;color:var(--muted)}
+.scanner-shot{margin:0 auto 8px;max-width:1000px}
+.scanner-shot .terminal-body img{width:100%;height:auto;display:block}
+.scanner-shot figcaption{margin-top:14px;text-align:center;color:var(--muted);font-size:14.5px;max-width:72ch;margin-inline:auto}
+.scanner-shot figcaption b{color:var(--ink)}
 
 /* free trial */
 .trial-card{background:linear-gradient(135deg,rgba(0,255,65,.08),rgba(0,229,255,.04));border:1px solid rgba(0,255,65,.32);border-radius:18px;padding:28px 30px;max-width:560px;margin:0 auto}

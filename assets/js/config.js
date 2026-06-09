@@ -10,7 +10,7 @@ window.SG_CONFIG = {
   currencySymbol: "$",
 
   /* ── App / access ────────────────────────────────────────── */
-  scannerUrl: "https://surgeguru.base44.app/Scanner",
+  scannerUrl: "https://surge.guru",   // the live app — signing in here sends an access request to the admin
   // Access model: user signs in with Google at the scanner, then an admin approves.
   contactEmail: "fraps32@gmail.com",   // ← "Send by email" button target. Change if you want a different inbox.
   whatsapp: "",             // 👉 FILL ME — your WhatsApp number, intl digits e.g. "9725XXXXXXXX" (powers the "Send on WhatsApp" button)
