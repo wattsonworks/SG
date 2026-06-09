@@ -5,7 +5,7 @@
 window.SG_CONFIG = {
   /* ── Pricing ─────────────────────────────────────────────── */
   priceUSD: 34,             // per WEEK
-  period: { he: "שבוע", en: "week" },
+  period: { he: "שבוע", en: "week", ar: "أسبوع" },
   vatRate: 0.18,            // Israeli VAT (18%) where applicable
   currencySymbol: "$",
 
@@ -30,6 +30,6 @@ window.SG_CONFIG = {
     bit:  { enabled: true, vat: false, phone: "FILL ME — Bit number", name: "FILL ME — name" },
     bank: { enabled: true, vat: false, bankName: "FILL ME", branch: "FILL ME", account: "FILL ME",
             beneficiary: "FILL ME", iban: "FILL ME — IL.. IBAN", swift: "FILL ME — SWIFT/BIC" },
-    cash: { enabled: true, vat: false, note: { he: "תיאום מסירה במזומן בהודעה.", en: "Arrange cash handover by message." } },
+    cash: { enabled: true, vat: false, note: { he: "תיאום מסירה במזומן בהודעה.", en: "Arrange cash handover by message.", ar: "تنسيق تسليم نقدي عبر رسالة." } },
   },
 };
