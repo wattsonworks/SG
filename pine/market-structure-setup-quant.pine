@@ -1,0 +1,262 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0
+// © Quant
+//
+// ═════════════════════════════════════════════════════════════════════════════
+//  PROVENANCE — extracted from two screenshots of LuxAlgo's video
+//  "Stupid Simple Trend Continuation Strategy" (AI-generated script shown in
+//  the LuxAlgo "Quant" chat + TradingView Pine Editor).
+//
+//  VERBATIM from the screenshots ......... original lines 1–51 and 267–308
+//  RECONSTRUCTED (off-screen) ............ original lines ~52–266 — the
+//      BOS / zone / inducement-liquidity engine. Rebuilt to satisfy every
+//      identifier the verbatim tail references (currentZoneDir, currentZoneTop,
+//      currentZoneBottom, activeBox, inducementLine, activeTrade, longSignal,
+//      shortSignal, slBox, tpBox) and the behavior described on screen.
+//      Reconstructed regions are delimited with banner comments below.
+//  EDGE-TRUNCATED lines (right side cut off in the screenshot, completed with
+//  the obvious value): 5, 15, 16, 19, 20, 23–27, 271, 272, 294, 295.
+// ═════════════════════════════════════════════════════════════════════════════
+
+//@version=6
+strategy("Market Structure Setup [Quant]", overlay = true, max_boxes_count = 500, max_lines_count = 500) // L5: text after "max_boxes_count =" was cut off; limits assumed
+
+// --- Inputs ---
+var string grp1 = "Pivot Settings"
+int length = input.int(5, "Pivot Length", group = grp1)
+
+var string grp3 = "Filters & Risk"
+bool useEmaFilter = input.bool(true, "Use 200 EMA Filter", group = grp3)
+int emaLength = input.int(200, "EMA Length", group = grp3)
+
+string slType = input.string("Zone", "Stop Loss Type", options = ["Zone", "ATR"], group = grp3)
+float rrRatio = input.float(1.5, "Risk/Reward Ratio (Zone SL)", step = 0.1, group = grp3)
+
+int atrLength = input.int(14, "ATR Length", group = grp3)
+float atrSlMult = input.float(1.0, "Stop Loss (ATR Multiplier)", step = 0.1, group = grp3)
+float atrTpMult = input.float(1.5, "Take Profit (ATR Multiplier)", step = 0.1, group = grp3)
+
+var string grp2 = "Style"
+color bullColor = input.color(color.new(#089981, 80), "Bullish Zone", group = grp2)
+color bearColor = input.color(color.new(#f23645, 80), "Bearish Zone", group = grp2)
+color signalColor = input.color(color.new(#f6c35b, 0), "Signal Color", group = grp2)
+color msColor = input.color(color.new(#787b86, 0), "MS Line Color", group = grp2)
+color indColor = input.color(color.new(#b2b5be, 0), "Inducement Line", group = grp2)
+
+// --- EMA & ATR ---
+float ema = ta.ema(close, emaLength)
+color emaColor = close > ema ? color.new(#089981, 0) : color.new(#f23645, 0)
+plot(ema, "EMA Filter", color = emaColor, linewidth = 2)
+
+float atr = ta.atr(atrLength)
+
+bool emaBullFilter = not useEmaFilter or close > ema
+bool emaBearFilter = not useEmaFilter or close < ema
+
+// --- Pivot Detection ---
+float ph = ta.pivothigh(length, length)
+float pl = ta.pivotlow(length, length)
+
+var float swingH = na
+var float swingL = na
+var int swingHBar = na
+var int swingLBar = na
+
+var float lastPhVal = na
+var int lastPhBar = na
+var float lastPlVal = na
+var int lastPlBar = na
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  ▼▼ RECONSTRUCTED SECTION (original lines ~52–266 were off-screen) ▼▼
+// ═════════════════════════════════════════════════════════════════════════════
+
+// Body edge of the pivot candle — used as the inner edge of the supply/demand
+// zone (wick = zone), captured at pivot confirmation
+var float lastPlBody = na
+var float lastPhBody = na
+
+// A confirmed pivot arms the structural reference (swingH/swingL). It is
+// consumed (set to na) once broken, so each level yields exactly one BOS.
+if not na(ph)
+    lastPhVal := ph
+    lastPhBar := bar_index - length
+    lastPhBody := math.max(open[length], close[length])
+    swingH := ph
+    swingHBar := bar_index - length
+if not na(pl)
+    lastPlVal := pl
+    lastPlBar := bar_index - length
+    lastPlBody := math.min(open[length], close[length])
+    swingL := pl
+    swingLBar := bar_index - length
+
+// --- Market Structure / Zone State ---
+var int currentZoneDir = 0        // 1 = demand (bull) armed, -1 = supply (bear) armed, 0 = none
+var float currentZoneTop = na
+var float currentZoneBottom = na
+var box activeBox = na
+var line inducementLine = na
+var float inducementLevel = na    // liquidity resting at the first pullback pivot after BOS
+var bool inducementSwept = false
+var bool zoneTapped = false
+var int zoneBirthBar = na
+
+// --- Trade State ---
+var bool activeTrade = false
+var float tradeEntry = na
+var float tradeSl = na
+var float tradeTp = na
+var box slBox = na
+var box tpBox = na
+
+// Release the trade lock once the position is flat
+if activeTrade and strategy.position_size == 0
+    activeTrade := false
+
+// --- BOS Detection (Break of Structure) ---
+bool bullBos = not na(swingH) and close > swingH
+bool bearBos = not na(swingL) and close < swingL
+
+// Bullish BOS → dashed MS line on the broken high; the origin pivot low
+// becomes the demand zone (wick: body-low → low); inducement resets and will
+// be the FIRST pivot low that confirms after the break (the resting liquidity)
+if bullBos and not na(lastPlVal)
+    line.new(swingHBar, swingH, bar_index, swingH, color = msColor, style = line.style_dashed)
+    currentZoneDir := 1
+    currentZoneTop := lastPlBody
+    currentZoneBottom := lastPlVal
+    zoneBirthBar := bar_index
+    if not na(activeBox)
+        box.set_right(activeBox, bar_index)
+    activeBox := box.new(lastPlBar, currentZoneTop, bar_index, currentZoneBottom, border_color = na, bgcolor = bullColor)
+    inducementLine := na
+    inducementLevel := na
+    inducementSwept := false
+    zoneTapped := false
+    swingH := na
+
+// Bearish BOS → mirror: origin pivot high becomes the supply zone
+if bearBos and not na(lastPhVal)
+    line.new(swingLBar, swingL, bar_index, swingL, color = msColor, style = line.style_dashed)
+    currentZoneDir := -1
+    currentZoneTop := lastPhVal
+    currentZoneBottom := lastPhBody
+    zoneBirthBar := bar_index
+    if not na(activeBox)
+        box.set_right(activeBox, bar_index)
+    activeBox := box.new(lastPhBar, currentZoneTop, bar_index, currentZoneBottom, border_color = na, bgcolor = bearColor)
+    inducementLine := na
+    inducementLevel := na
+    inducementSwept := false
+    zoneTapped := false
+    swingL := na
+
+// --- Inducement (liquidity) ---
+// First confirmed pullback pivot AFTER the BOS bar marks the inducement level
+if currentZoneDir == 1 and na(inducementLevel) and not na(pl) and (bar_index - length) > zoneBirthBar
+    inducementLevel := pl
+    inducementLine := line.new(bar_index - length, pl, bar_index, pl, color = indColor, style = line.style_dotted)
+if currentZoneDir == -1 and na(inducementLevel) and not na(ph) and (bar_index - length) > zoneBirthBar
+    inducementLevel := ph
+    inducementLine := line.new(bar_index - length, ph, bar_index, ph, color = indColor, style = line.style_dotted)
+
+// Sweep = price trades through the inducement (liquidity grab)
+if currentZoneDir == 1 and not na(inducementLevel) and not inducementSwept and low < inducementLevel
+    inducementSwept := true
+if currentZoneDir == -1 and not na(inducementLevel) and not inducementSwept and high > inducementLevel
+    inducementSwept := true
+
+// Tap = price reaches back into the zone
+if currentZoneDir == 1 and low <= currentZoneTop
+    zoneTapped := true
+if currentZoneDir == -1 and high >= currentZoneBottom
+    zoneTapped := true
+
+// Invalidation = close through the far side of the zone before entry
+if currentZoneDir == 1 and close < currentZoneBottom
+    box.set_right(activeBox, bar_index)
+    currentZoneDir := 0
+    activeBox := na
+    inducementLine := na
+    inducementLevel := na
+    inducementSwept := false
+    zoneTapped := false
+if currentZoneDir == -1 and close > currentZoneTop
+    box.set_right(activeBox, bar_index)
+    currentZoneDir := 0
+    activeBox := na
+    inducementLine := na
+    inducementLevel := na
+    inducementSwept := false
+    zoneTapped := false
+
+// Extend armed visuals
+if not na(activeBox)
+    box.set_right(activeBox, bar_index)
+if not na(inducementLine)
+    line.set_x2(inducementLine, bar_index)
+
+// --- Signals ---
+// Continuation entry: structure broken → liquidity swept → zone tapped →
+// close reclaims the zone edge in the trend direction, EMA regime agrees
+bool longSignal = currentZoneDir == 1 and inducementSwept and zoneTapped and close > currentZoneTop and emaBullFilter and not activeTrade and strategy.position_size == 0
+bool shortSignal = currentZoneDir == -1 and inducementSwept and zoneTapped and close < currentZoneBottom and emaBearFilter and not activeTrade and strategy.position_size == 0
+
+plotshape(longSignal, "Long Signal", shape.triangleup, location.belowbar, signalColor, size = size.small)
+plotshape(shortSignal, "Short Signal", shape.triangledown, location.abovebar, signalColor, size = size.small)
+
+// --- Entries ---
+if longSignal
+    activeTrade := true
+    tradeEntry := close
+
+    if slType == "Zone"
+        tradeSl := currentZoneBottom
+        float risk = tradeEntry - tradeSl
+        tradeTp := tradeEntry + (risk * rrRatio)
+    else
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  ▼▼ VERBATIM TAIL resumes here (original lines 267–308) ▼▼
+// ═════════════════════════════════════════════════════════════════════════════
+        tradeSl := tradeEntry - (atr * atrSlMult)
+        tradeTp := tradeEntry + (atr * atrTpMult)
+
+    // Draw TP/SL Boxes
+    slBox := box.new(bar_index, tradeEntry, bar_index, tradeSl, border_color = na, bgcolor = color.new(#f23645, 85)) // L271: bgcolor cut off in screenshot; assumed
+    tpBox := box.new(bar_index, tradeTp, bar_index, tradeEntry, border_color = na, bgcolor = color.new(#089981, 85)) // L272: bgcolor cut off in screenshot; assumed
+
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Exit Long", "Long", stop = tradeSl, limit = tradeTp)
+
+    currentZoneDir := 0
+    activeBox := na
+    inducementLine := na
+
+if shortSignal
+    activeTrade := true
+    tradeEntry := close
+
+    if slType == "Zone"
+        tradeSl := currentZoneTop
+        float risk = tradeSl - tradeEntry
+        tradeTp := tradeEntry - (risk * rrRatio)
+    else
+        tradeSl := tradeEntry + (atr * atrSlMult)
+        tradeTp := tradeEntry - (atr * atrTpMult)
+
+    // Draw TP/SL Boxes
+    slBox := box.new(bar_index, tradeEntry, bar_index, tradeSl, border_color = na, bgcolor = color.new(#f23645, 85)) // L294: bgcolor cut off in screenshot; assumed
+    tpBox := box.new(bar_index, tradeEntry, bar_index, tradeTp, border_color = na, bgcolor = color.new(#089981, 85)) // L295: bgcolor cut off in screenshot; assumed
+
+    strategy.entry("Short", strategy.short)
+    strategy.exit("Exit Short", "Short", stop = tradeSl, limit = tradeTp)
+
+    currentZoneDir := 0
+    activeBox := na
+    inducementLine := na
+
+// --- Trade Management (Visuals) ---
+if strategy.position_size != 0
+    box.set_right(slBox, bar_index)
+    box.set_right(tpBox, bar_index)
