@@ -1,0 +1,283 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0
+// © Quant — v2 rework
+//
+// ═════════════════════════════════════════════════════════════════════════════
+//  MARKET STRUCTURE LIQUIDITY CONTINUATION [v2]
+//
+//  Rework of market-structure-setup-quant.pine to match the liquidity model
+//  from the second video (screenshots IMG_9327 / IMG_9329):
+//
+//   • EMA filter REMOVED (disabling it raised the profit factor in the video).
+//     Trend is marked from structure itself: HH/HL/LH/LL labels, BOS/CHoCH
+//     lines, and a background tint for the active trend.
+//   • The RED BLOCK = the accumulation/liquidity area that price consolidated
+//     in before the break: from the last opposing swing to the broken level.
+//     The STOP LOSS goes across the whole block (its far edge + buffer).
+//   • After the BOS, the first pullback pivot's WICK = the INNER LIQUIDITY
+//     (pink line). The bounce lows inside the pullback are NOT liquidity:
+//     the setup only validates when price prints a true LOWER LOW (short)
+//     / HIGHER HIGH (long) beyond the impulse extreme — the white arrow.
+//   • Once the LL/HH confirms, a LIMIT order rests at the inner-liquidity
+//     wick: the retrace into the wick is the entry (like the video's short).
+//   • TP = Risk/Reward multiple (default 2.5 — the video trade ran ~2.6R),
+//     or optionally the structural LL/HH itself. Optional break-even move
+//     at +1R (the "BE" management shown in the second image).
+//
+//  Sequence (short side; long side is the mirror):
+//    1. Structure trend + BOS: close breaks the last swing low
+//    2. Red block = [last swing high → broken low], drawn & extended
+//    3. First confirmed pullback pivot high after BOS → inner liquidity wick
+//    4. Lower low below the impulse low → liquidity taken, setup armed
+//    5. Sell LIMIT at the inner wick · SL above the block · TP at R:R
+// ═════════════════════════════════════════════════════════════════════════════
+
+//@version=6
+strategy("Market Structure Liquidity Continuation [v2]", overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500)
+
+// --- Inputs ---
+var string grp1 = "Structure"
+int length = input.int(5, "Pivot Length", group = grp1)
+bool showLabels = input.bool(true, "HH/HL/LH/LL + BOS Labels", group = grp1)
+bool showTrendBg = input.bool(true, "Trend Background", group = grp1)
+
+var string grp3 = "Risk"
+float rrRatio = input.float(2.5, "Risk/Reward Ratio", step = 0.1, group = grp3)
+string tpMode = input.string("R:R", "Take Profit Mode", options = ["R:R", "Structure (LL/HH)"], group = grp3)
+float slBufAtr = input.float(0.0, "SL Buffer beyond Block (ATR mult)", step = 0.1, group = grp3)
+int atrLength = input.int(14, "ATR Length (buffer)", group = grp3)
+bool beEnable = input.bool(true, "Move SL to Break-Even", group = grp3)
+float beTrigger = input.float(1.0, "Break-Even Trigger (R)", step = 0.25, group = grp3)
+
+var string grp2 = "Style"
+color bullColor = input.color(color.new(#089981, 80), "Bullish Liquidity Block", group = grp2)
+color bearColor = input.color(color.new(#f23645, 80), "Bearish Liquidity Block", group = grp2)
+color signalColor = input.color(color.new(#f6c35b, 0), "Entry Line / Confirmations", group = grp2)
+color msColor = input.color(color.new(#787b86, 0), "MS Line Color", group = grp2)
+color indColor = input.color(color.new(#e91e63, 0), "Inner Liquidity Line", group = grp2)
+
+float atr = ta.atr(atrLength)
+max_bars_back(low, 1000)
+max_bars_back(high, 1000)
+
+// --- Pivot Detection & Structure Marking ---
+float ph = ta.pivothigh(length, length)
+float pl = ta.pivotlow(length, length)
+
+var float prevPh = na          // previous pivot high (for HH/LH classification)
+var float prevPl = na          // previous pivot low  (for HL/LL classification)
+
+var float swingH = na          // unbroken structural high (consumed on BOS)
+var int swingHBar = na
+var float swingL = na          // unbroken structural low (consumed on BOS)
+var int swingLBar = na
+
+var float lastPhVal = na       // most recent confirmed pivots (block anchors)
+var int lastPhBar = na
+var float lastPlVal = na
+var int lastPlBar = na
+
+if not na(ph)
+    if showLabels
+        string t = na(prevPh) ? "H" : ph > prevPh ? "HH" : "LH"
+        label.new(bar_index - length, ph, t, style = label.style_label_down, color = color.new(color.gray, 100), textcolor = msColor, size = size.tiny)
+    prevPh := ph
+    lastPhVal := ph
+    lastPhBar := bar_index - length
+    swingH := ph
+    swingHBar := bar_index - length
+if not na(pl)
+    if showLabels
+        string t = na(prevPl) ? "L" : pl > prevPl ? "HL" : "LL"
+        label.new(bar_index - length, pl, t, style = label.style_label_up, color = color.new(color.gray, 100), textcolor = msColor, size = size.tiny)
+    prevPl := pl
+    lastPlVal := pl
+    lastPlBar := bar_index - length
+    swingL := pl
+    swingLBar := bar_index - length
+
+// --- Trend & BOS ---
+var int trend = 0                                        // 1 = bullish structure, -1 = bearish
+bool bullBos = not na(swingH) and close > swingH
+bool bearBos = not na(swingL) and close < swingL
+
+// --- Setup State Machine ---
+// stage: 0 idle · 1 BOS done, waiting pullback pivot · 2 inner liquidity set,
+// waiting LL/HH validation · 3 limit resting at the wick · 4 position open
+var int setupDir = 0
+var int stage = 0
+var float zTop = na            // liquidity block far/near edges
+var float zBottom = na
+var box liqBox = na
+var float innerLiq = na        // inner liquidity wick = pending entry level
+var line innerLine = na
+var line entryLine = na
+var float refExtreme = na      // impulse extreme the LL/HH must exceed
+var int bosBar = na
+var float entryLevel = na
+var float slLevel = na
+var float tpLevel = na
+var float riskAmt = na
+var bool beMoved = false
+var box slBox = na
+var box tpBox = na
+
+// --- BOS handling: mark structure, build the liquidity block, start a setup ---
+if bearBos
+    line.new(swingLBar, swingL, bar_index, swingL, color = msColor, style = line.style_dashed)
+    if showLabels
+        label.new(bar_index, swingL, trend == 1 ? "CHoCH" : "BOS", style = label.style_label_up, color = color.new(color.gray, 100), textcolor = msColor, size = size.tiny)
+    trend := -1
+    strategy.cancel("Long")
+    strategy.cancel("Short")
+    if not na(liqBox)
+        box.set_right(liqBox, bar_index)
+    if not na(innerLine)
+        line.delete(innerLine)
+    if not na(entryLine)
+        line.delete(entryLine)
+    // red block: everything price accumulated between the last swing high and
+    // the level it just broke — the stop will sit beyond ALL of it
+    zTop := lastPhVal
+    zBottom := swingL
+    liqBox := box.new(lastPhBar, zTop, bar_index, zBottom, border_color = na, bgcolor = bearColor)
+    setupDir := -1
+    stage := 1
+    bosBar := bar_index
+    refExtreme := low
+    innerLiq := na
+    innerLine := na
+    entryLine := na
+    swingL := na
+
+if bullBos
+    line.new(swingHBar, swingH, bar_index, swingH, color = msColor, style = line.style_dashed)
+    if showLabels
+        label.new(bar_index, swingH, trend == -1 ? "CHoCH" : "BOS", style = label.style_label_down, color = color.new(color.gray, 100), textcolor = msColor, size = size.tiny)
+    trend := 1
+    strategy.cancel("Long")
+    strategy.cancel("Short")
+    if not na(liqBox)
+        box.set_right(liqBox, bar_index)
+    if not na(innerLine)
+        line.delete(innerLine)
+    if not na(entryLine)
+        line.delete(entryLine)
+    zTop := swingH
+    zBottom := lastPlVal
+    liqBox := box.new(lastPlBar, zTop, bar_index, zBottom, border_color = na, bgcolor = bullColor)
+    setupDir := 1
+    stage := 1
+    bosBar := bar_index
+    refExtreme := high
+    innerLiq := na
+    innerLine := na
+    entryLine := na
+    swingH := na
+
+// --- Stage 1: extend the impulse extreme while waiting for the pullback ---
+if stage == 1
+    refExtreme := setupDir == -1 ? math.min(refExtreme, low) : math.max(refExtreme, high)
+
+// --- Stage 1→2: first pullback pivot after the BOS = INNER LIQUIDITY wick ---
+// (a later pullback pivot while in stage 2 replaces it — latest wick counts)
+if setupDir == -1 and (stage == 1 or stage == 2) and not na(ph) and (bar_index - length) > bosBar
+    // impulse low = lowest wick from the BOS bar up to the pullback pivot bar
+    int span = math.min(bar_index - bosBar, 900)
+    float lo = low[length]
+    for i = length to span
+        lo := math.min(lo, low[i])
+    refExtreme := lo
+    innerLiq := ph
+    if not na(innerLine)
+        line.delete(innerLine)
+    innerLine := line.new(bar_index - length, ph, bar_index, ph, color = indColor, style = line.style_dotted, width = 2)
+    stage := 2
+if setupDir == 1 and (stage == 1 or stage == 2) and not na(pl) and (bar_index - length) > bosBar
+    int span = math.min(bar_index - bosBar, 900)
+    float hi = high[length]
+    for i = length to span
+        hi := math.max(hi, high[i])
+    refExtreme := hi
+    innerLiq := pl
+    if not na(innerLine)
+        line.delete(innerLine)
+    innerLine := line.new(bar_index - length, pl, bar_index, pl, color = indColor, style = line.style_dotted, width = 2)
+    stage := 2
+
+// --- Stage 2→3: LOWER LOW (short) / HIGHER HIGH (long) validates the setup ---
+// The pullback's internal bounces are NOT liquidity — only a wick beyond the
+// impulse extreme arms the limit order at the inner-liquidity wick.
+bool llConfirm = setupDir == -1 and stage == 2 and math.min(low, ta.lowest(low, length)) < refExtreme
+bool hhConfirm = setupDir == 1 and stage == 2 and math.max(high, ta.highest(high, length)) > refExtreme
+
+if llConfirm or hhConfirm
+    entryLevel := innerLiq
+    slLevel := setupDir == -1 ? zTop + atr * slBufAtr : zBottom - atr * slBufAtr
+    riskAmt := setupDir == -1 ? slLevel - entryLevel : entryLevel - slLevel
+    if riskAmt > 0 and strategy.position_size == 0
+        tpLevel := setupDir == -1 ?
+             (tpMode == "R:R" ? entryLevel - riskAmt * rrRatio : math.min(low, refExtreme)) :
+             (tpMode == "R:R" ? entryLevel + riskAmt * rrRatio : math.max(high, refExtreme))
+        if setupDir == -1
+            strategy.entry("Short", strategy.short, limit = entryLevel)
+            strategy.exit("Exit Short", "Short", stop = slLevel, limit = tpLevel)
+        else
+            strategy.entry("Long", strategy.long, limit = entryLevel)
+            strategy.exit("Exit Long", "Long", stop = slLevel, limit = tpLevel)
+        entryLine := line.new(bar_index, entryLevel, bar_index, entryLevel, color = signalColor, width = 2)
+        if showLabels
+            label.new(bar_index, setupDir == -1 ? low : high, setupDir == -1 ? "LL ✓" : "HH ✓", style = setupDir == -1 ? label.style_label_up : label.style_label_down, color = color.new(color.gray, 100), textcolor = signalColor, size = size.tiny)
+        beMoved := false
+        stage := 3
+    else
+        // wick sits beyond the block (no positive risk) or already in a trade
+        stage := 0
+        setupDir := 0
+
+// --- Stage 3: limit resting — fill, or invalidate on a close beyond the SL ---
+if stage == 3
+    if strategy.position_size != 0
+        stage := 4
+        float fill = strategy.position_avg_price
+        slBox := box.new(bar_index, fill, bar_index, slLevel, border_color = na, bgcolor = color.new(#f23645, 85))
+        tpBox := box.new(bar_index, fill, bar_index, tpLevel, border_color = na, bgcolor = color.new(#089981, 85))
+        if not na(liqBox)
+            box.set_right(liqBox, bar_index)
+    else if (setupDir == -1 and close > slLevel) or (setupDir == 1 and close < slLevel)
+        strategy.cancel("Short")
+        strategy.cancel("Long")
+        if not na(entryLine)
+            line.delete(entryLine)
+        stage := 0
+        setupDir := 0
+
+// --- Stage 4: manage the position (break-even move at +N R, like the video) ---
+if stage == 4
+    if strategy.position_size != 0
+        float fill = strategy.position_avg_price
+        if beEnable and not beMoved
+            if strategy.position_size < 0 and low <= fill - riskAmt * beTrigger
+                strategy.exit("Exit Short", "Short", stop = fill, limit = tpLevel)
+                beMoved := true
+            if strategy.position_size > 0 and high >= fill + riskAmt * beTrigger
+                strategy.exit("Exit Long", "Long", stop = fill, limit = tpLevel)
+                beMoved := true
+    else
+        stage := 0
+        setupDir := 0
+
+// --- Trade Management (Visuals) ---
+if strategy.position_size != 0
+    box.set_right(slBox, bar_index)
+    box.set_right(tpBox, bar_index)
+
+// Extend the active block / inner liquidity / pending entry to the right
+if not na(liqBox) and stage >= 1 and stage <= 3
+    box.set_right(liqBox, bar_index)
+if not na(innerLine) and (stage == 2 or stage == 3)
+    line.set_x2(innerLine, bar_index)
+if not na(entryLine) and stage == 3
+    line.set_x2(entryLine, bar_index)
+
+// Trend background (structure-based — replaces the removed EMA filter)
+bgcolor(showTrendBg ? trend == 1 ? color.new(#089981, 94) : trend == -1 ? color.new(#f23645, 94) : na : na, title = "Trend Background")

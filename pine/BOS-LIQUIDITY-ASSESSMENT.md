@@ -98,7 +98,36 @@ Treat the published numbers as marketing until it survives: realistic commission
 risk-normalized sizing, `process_orders_on_close` (or next-open level computation), and
 out-of-sample / walk-forward testing across trending *and* ranging periods.
 
-## 4. If you obtain the full original source, diff these first
+## 4. v2 — Structure-trend + liquidity-sweep rework (`market-structure-liquidity-v2.pine`)
+
+Rebuilt from the second video's model (screenshots IMG_9327 / IMG_9329) and the follow-up
+requirements: EMA filter removed (disabling it raised PF in the tests shown), trend marked
+from structure, and SL/TP taken from the swing that price made through the liquidity.
+
+**Rule mapping from the screenshots:**
+
+| On the video chart | In the script |
+|---|---|
+| Red block (accumulation/liquidity area) | Box from the last opposing swing to the broken level, drawn on BOS and extended right |
+| Trend + break | HH/HL/LH/LL pivot labels, dashed BOS/CHoCH lines, trend background tint (replaces EMA) |
+| Pink line at the pullback wick ("inner liquidity") | First post-BOS confirmed pullback pivot's wick; a later pullback pivot replaces it |
+| White arrow: bounces are *not* liquidity until a lower low prints | Setup stays disarmed until a wick exceeds the impulse extreme (LL for shorts / HH for longs) |
+| Entry at the inner liquidity wick | LIMIT order resting at the wick once the LL/HH confirms — the retrace is the fill |
+| Stop "all over" the red block | SL at the block's far edge (+ optional ATR buffer input) |
+| Trade shown ≈ 2.6 R:R, then "BE" | TP = 2.5× risk by default (or the structural LL/HH), optional break-even move at +1R |
+
+**What v2 fixes vs v1:** limit entries fill *at the computed level* (no more close-vs-next-open
+drift in the backtest), the stop is structural instead of ATR-arbitrary, and the trend filter
+no longer throws away counter-EMA continuation setups.
+
+**Still open before trusting a backtest:** zero commission/slippage in the declaration, fixed
+default quantity (risk per trade still varies with block width — size off `risk = |entry − SL|`),
+pivot confirmation lag (`length` bars) can miss V-shaped pullbacks that fill before the inner
+wick is even confirmed, and the BE trigger fires on an intrabar touch, which is optimistic on
+wide bars. Test PF with BE on *and* off — BE conversions of winners into scratches often cost
+more PF than they save.
+
+## 5. If you obtain the full original source, diff these first
 
 1. The exact **zone top/bottom definition** (wick-to-body vs ATR-padded vs full candle).
 2. The exact **inducement selection rule** (first post-BOS pivot vs pre-BOS pullback low).
